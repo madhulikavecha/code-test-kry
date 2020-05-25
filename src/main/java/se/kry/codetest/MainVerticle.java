@@ -5,7 +5,6 @@ import io.vertx.core.Future;
 import io.vertx.core.Vertx;
 import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
-import io.vertx.ext.sql.ResultSet;
 import io.vertx.ext.web.Router;
 import io.vertx.ext.web.handler.BodyHandler;
 import io.vertx.ext.web.handler.StaticHandler;
@@ -21,9 +20,8 @@ public class MainVerticle extends AbstractVerticle {
 
   private HashMap<String, Service> services = new HashMap<>();
   private DBConnector connector;
-  private BackgroundPoller poller = new BackgroundPoller();
   DateFormat df = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
-  BackgroundPoller bgPoller = new BackgroundPoller();
+  BackgroundPoller bgPoller;
 
   @Override
   public void start(Future<Void> startFuture) {
@@ -33,8 +31,9 @@ public class MainVerticle extends AbstractVerticle {
     Service service = new Service("kryService", "UNKNOWN");
     Date dateObj = new Date();
     service.setDate(df.format(dateObj));
-    services.put("https://www.kry.se", service);
-    vertx.setPeriodic(1000 * 60, timerId -> poller.pollServices(connector, services));
+    services.put("www.kry.se", service);
+    bgPoller = new BackgroundPoller(vertx,connector);
+    vertx.setPeriodic(1000 * 60, timerId -> bgPoller.pollServices(connector, services));
     services = bgPoller.getDataFromDB(connector, services);
     setRoutes(router);
     vertx
@@ -54,6 +53,9 @@ public class MainVerticle extends AbstractVerticle {
     router.route("/*").handler(StaticHandler.create());
 
     router.get("/service").handler(req -> {
+      connector = new DBConnector(vertx);
+      bgPoller = new BackgroundPoller(vertx,connector);
+      services = bgPoller.getDataFromDB(connector, services);
       List<JsonObject> jsonServices = services
           .entrySet()
           .stream()
@@ -61,7 +63,7 @@ public class MainVerticle extends AbstractVerticle {
               new JsonObject()
                   .put("url", service.getKey())
                   .put("name", service.getValue().serviceName)
-                  .put("status", "ACTIVE")
+                  .put("status", service.getValue().serviceStatus)
                   .put("date", service.getValue().date))
           .collect(Collectors.toList());
       System.out.println(jsonServices);

@@ -1,15 +1,28 @@
 package se.kry.codetest;
 
+import io.vertx.core.Vertx;
 import io.vertx.core.json.JsonArray;
 import io.vertx.ext.sql.ResultSet;
+import io.vertx.ext.web.client.WebClient;
+
 import java.util.HashMap;
 import java.util.List;
 
 public class BackgroundPoller {
 
+  private WebClient client;
+  private Vertx vertx;
+  private DBConnector connector;
+
+  public BackgroundPoller(Vertx vertx, DBConnector connector) {
+    this.vertx = vertx;
+    this.connector = connector;
+  }
+
   public void pollServices(DBConnector connector, HashMap<String, Service> services) {
-    System.out.println("printing in poller");
+    System.out.println("polling services...");
     getDataFromDB(connector, services);
+    pollServiceStatus(connector, services);
   }
 
   public HashMap<String, Service> getDataFromDB(DBConnector connector, HashMap<String, Service> services) {
@@ -29,5 +42,29 @@ public class BackgroundPoller {
       }
     });
     return services;
+  }
+
+  public void pollServiceStatus(DBConnector connector, HashMap<String, Service> services) {
+    client = WebClient.create(vertx);
+    services.forEach((url,service) -> {
+      System.out.println("url is "+url+" service name is "+service.serviceName);
+      client.get(80, url, "/").send(ar -> {
+          updateService(url, ar.result().statusMessage());
+      });
+    });
+  }
+
+  private void updateService(String url, String statusMessage) {
+    String updateQuery = "UPDATE service SET status = ? WHERE url = ?;commit;";
+    System.out.println("service url is "+url);
+    JsonArray params = new JsonArray();
+    params.add(statusMessage).add(url);
+    connector.update(updateQuery,params).setHandler(done -> {
+      if(done.succeeded()){
+        System.out.println("update successful");
+      } else {
+        done.cause().printStackTrace();
+      }
+    });
   }
 }
