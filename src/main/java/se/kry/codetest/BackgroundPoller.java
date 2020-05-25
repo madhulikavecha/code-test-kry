@@ -58,6 +58,9 @@ public class BackgroundPoller {
     String updateQuery = "UPDATE service SET status = ? WHERE url = ?;commit;";
     System.out.println("service url is "+url);
     JsonArray params = new JsonArray();
+    if(!statusMessage.equalsIgnoreCase("OK")){
+      statusMessage = "FAIL";
+    }
     params.add(statusMessage).add(url);
     connector.update(updateQuery,params).setHandler(done -> {
       if(done.succeeded()){
